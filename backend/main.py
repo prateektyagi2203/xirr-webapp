@@ -1,19 +1,31 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List
 from datetime import datetime
 
 app = FastAPI()
 
-# ✅ CORS — EXPLICIT & CORRECT
+# ✅ CORS (keep this)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],   # includes OPTIONS
+    allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ✅ Explicit OPTIONS handler (THIS IS THE KEY)
+@app.options("/xirr")
+def options_xirr():
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        },
+    )
 
 class Cashflow(BaseModel):
     date: str
@@ -41,3 +53,4 @@ def xirr(cashflows):
 @app.post("/xirr")
 def calculate_xirr(req: XIRRRequest):
     return {"xirr": round(xirr(req.cashflows), 2)}
+
