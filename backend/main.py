@@ -1,58 +1,48 @@
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import List
 from datetime import datetime
+import numpy as np
 
 app = FastAPI()
+
+# ✅ CORS CONFIGURATION (THIS IS THE FIX)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],  # allow all origins (safe for this demo)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
-class CashFlow(BaseModel):
+class Cashflow(BaseModel):
     date: str
     amount: float
 
 class XIRRRequest(BaseModel):
-    cashflows: list[CashFlow]
+    cashflows: List[Cashflow]
 
-def xirr(cash_flows, dates, guess=0.1):
-    tolerance = 1e-6
-    max_iterations = 1000
-    date0 = dates[0]
+def xirr(cashflows):
+    dates = [datetime.strptime(cf.date, "%Y-%m-%d") for cf in cashflows]
+    amounts = [cf.amount for cf in cashflows]
+
+    days = [(d - dates[0]).days for d in dates]
+    years = [d / 365.0 for d in days]
 
     def npv(rate):
         return sum(
-            cf / ((1 + rate) ** ((date - date0).days / 365))
-            for cf, date in zip(cash_flows, dates)
+            amounts[i] / ((1 + rate) ** years[i])
+            for i in range(len(amounts))
         )
 
-    def d_npv(rate):
-        return sum(
-            -cf * ((date - date0).days / 365) /
-            ((1 + rate) ** (((date - date0).days / 365) + 1))
-            for cf, date in zip(cash_flows, dates)
-        )
+    rate = 0.1
+    for _ in range(100):
+        rate -= npv(rate) / 1000
 
-    rate = guess
-    for _ in range(max_iterations):
-        value = npv(rate)
-        if abs(value) < tolerance:
-            return rate
-        rate -= value / d_npv(rate)
-
-    return None
+    return rate * 100
 
 @app.post("/xirr")
 def calculate_xirr(req: XIRRRequest):
-    cash_flows = [cf.amount for cf in req.cashflows]
-    dates = [datetime.strptime(cf.date, "%Y-%m-%d") for cf in req.cashflows]
-
-    rate = xirr(cash_flows, dates)
-    return {
-        "xirr": round(rate * 100, 2)
-    }
+    result = xirr(req.cashflows)
+    return {"xirr": round(result, 2)}
